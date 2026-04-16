@@ -52,21 +52,24 @@ FISCAL_SYSTEM = (
     "You are a senior fiscal policy analyst specialising in Indian government finance. "
     "Analyse the given policy for fiscal impact, tax revenue implications, government expenditure, "
     "deficit risks, and debt sustainability. Focus on Union Budget alignment and CAG audit concerns. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble."
+    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
+    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
 )
 
 LABOR_SYSTEM = (
     "You are a labor economist specialising in India's workforce. "
     "Analyse the given policy for job creation or loss, wage effects, impact on the informal sector "
     "which employs 90% of Indian workers, migrant labor, and gig economy workers. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble."
+    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
+    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
 )
 
 EQUITY_SYSTEM = (
     "You are a social equity researcher specialising in India. "
     "Analyse the given policy for effects on Scheduled Castes, Scheduled Tribes, OBCs, women, "
     "and low-income rural households. Identify which groups bear disproportionate costs or benefits. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble."
+    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
+    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
 )
 
 REGIONAL_SYSTEM = (
@@ -74,7 +77,8 @@ REGIONAL_SYSTEM = (
     "Analyse the given policy for state-level variance, Centre-state fiscal tensions, "
     "impact on northeastern states, linguistic minorities, and whether the policy ignores "
     "regional economic diversity. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble."
+    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
+    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
 )
 
 COORDINATOR_SYSTEM = (
@@ -82,7 +86,8 @@ COORDINATOR_SYSTEM = (
     "You have received independent risk assessments from 4 specialist agents. "
     "Synthesise their findings into a final intelligence briefing. "
     "Be direct, specific, and highlight where agents disagree. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble."
+    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
+    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
 )
 
 AGENTS = [
@@ -95,11 +100,12 @@ AGENTS = [
 
 def parse_response(content: str, agent_name: str, default_keys: dict) -> dict:
     content = content.strip()
-    content = re.sub(r"^```json\s*", "", content, flags=re.MULTILINE)
-    content = re.sub(r"^```\s*", "", content, flags=re.MULTILINE)
-    content = re.sub(r"```$", "", content, flags=re.MULTILINE)
+    # Remove all markdown code fences
+    content = re.sub(r'```json', '', content)
+    content = re.sub(r'```', '', content)
     content = content.strip()
-    match = re.search(r"\{.*\}", content, re.DOTALL)
+    # Extract just the JSON object if there is surrounding text
+    match = re.search(r'\{.*\}', content, re.DOTALL)
     if match:
         content = match.group()
     try:
