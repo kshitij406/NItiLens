@@ -1,0 +1,225 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #080C14;
+  --bg-surface: #0D1520;
+  --bg-elevated: #131E2E;
+  --border: #1E2D42;
+  --border-bright: #2A4060;
+  --accent: #3B82F6;
+  --accent-dim: rgba(59, 130, 246, 0.08);
+  --text-primary: #E8EDF5;
+  --text-secondary: #8A9BB5;
+  --text-dim: #4A5F7A;
+  --high: #EF4444;
+  --medium: #F59E0B;
+  --low: #10B981;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grain texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Blue radial glow — top left */
+body::after {
+  content: '';
+  position: fixed;
+  top: -300px;
+  left: -300px;
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.07) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Animations ─────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+@keyframes personaReveal {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Shimmer skeleton ────────────────────────────────────── */
+
+.shimmer-line {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 25%,
+    var(--bg-elevated) 50%,
+    var(--bg-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* ── Persona dots ────────────────────────────────────────── */
+
+.persona-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.persona-dot.revealed {
+  animation: personaReveal 300ms ease both;
+}
+
+/* ── Severity banner ─────────────────────────────────────── */
+
+.severity-banner {
+  background: var(--accent-dim);
+  border-top: 1px solid var(--border-bright);
+  border-right: 1px solid var(--border-bright);
+  border-bottom: 1px solid var(--border-bright);
+  border-left: 4px solid;   /* color set via inline style */
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── Coordinator card ────────────────────────────────────── */
+
+.coordinator-card {
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-bright);
+  border-right: 1px solid var(--border-bright);
+  border-bottom: 1px solid var(--border-bright);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  padding: 24px;
+  margin-top: 20px;
+}
+
+/* ── Agent card ──────────────────────────────────────────── */
+
+.agent-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.agent-card.complete {
+  border-color: var(--border-bright);
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.06);
+}
+
+/* ── Form controls ───────────────────────────────────────── */
+
+.nl-input {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 150ms ease;
+  resize: none;
+}
+
+.nl-input::placeholder {
+  color: var(--text-dim);
+}
+
+.nl-input:focus {
+  border-color: var(--accent);
+}
+
+.nl-label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  margin-top: 20px;
+}
+
+.nl-label:first-child {
+  margin-top: 0;
+}
+
+/* ── Mono utility ────────────────────────────────────────── */
+
+.mono {
+  font-family: 'DM Mono', monospace;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+/* ── Mobile grid override ────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .two-col { grid-template-columns: 1fr !important; }
+  .agent-grid { grid-template-columns: 1fr !important; }
+}
