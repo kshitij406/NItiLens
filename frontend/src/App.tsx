@@ -5,6 +5,8 @@ import Stage2Simulation from './components/Stage2Simulation'
 import Stage3Findings from './components/Stage3Findings'
 import ValidationExample from './components/ValidationExample'
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 const INITIAL_STATE: AnalysisState = {
   stage: 'idle',
   agents: [],
@@ -33,7 +35,7 @@ export default function App() {
     })
 
     const params = new URLSearchParams({ title, description })
-    const es = new EventSource(`/api/analyse/stream?${params}`)
+    const es = new EventSource(`${API_BASE}/api/analyse/stream?${params}`)
     esRef.current = es
 
     es.onmessage = (e: MessageEvent) => {

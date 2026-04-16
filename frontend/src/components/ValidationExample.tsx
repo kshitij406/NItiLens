@@ -3,6 +3,8 @@ import { ValidationResult } from '../types'
 import AgentCard from './AgentCard'
 import { CoordinatorResult } from '../types'
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 const SEV_COLOR: Record<string, string> = {
   High: 'var(--high)',
   Medium: 'var(--medium)',
@@ -56,7 +58,7 @@ export default function ValidationExample() {
 
   useEffect(() => {
     setLoading(true)
-    fetch('/api/validate')
+    fetch(`${API_BASE}/api/validate`)
       .then(r => { if (!r.ok) throw new Error(`Server responded with ${r.status}`); return r.json() })
       .then(d => setData(d as ValidationResult))
       .catch(e => setError((e as Error).message))
