@@ -1,4 +1,5 @@
 import asyncio
+import glob
 import json
 import logging
 
@@ -19,6 +20,9 @@ from agents import (
     regional_agent,
     run_persona,
 )
+from confidence_scorer import calculate_confidence
+from forward_validator import seal_simulation
+from policy_classifier import classify_policy
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -40,10 +44,24 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
         agent_results = []
         persona_results = []
 
+        # Classify policy first
+        try:
+            classification = await classify_policy(title, description)
+        except Exception:
+            classification = {
+                "domain": "other",
+                "primary_affected": "all",
+                "geography": "national",
+                "time_horizon": "short_term",
+                "key_attributes": ["income", "employment", "region"],
+            }
+
+        yield f"data: {json.dumps({'type': 'classification', 'data': classification})}\n\n"
+
         # Run 4 agents sequentially, emit each as it completes
         for agent_fn in [fiscal_agent, labor_agent, equity_agent, regional_agent]:
             try:
-                result = await agent_fn(title, description)
+                result = await agent_fn(title, description, classification)
             except Exception:
                 result = _default_agent(agent_fn.__name__)
             agent_results.append(result)
@@ -87,6 +105,8 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
 
         logger.info(f"Personas complete: {len(persona_results)} responses")
 
+        confidence_result = calculate_confidence(agent_results, persona_results)
+
         # Run coordinator
         try:
             coordinator = await coordinator_agent(title, agent_results)
@@ -111,8 +131,16 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
             f"Coordinator complete | confidence: {coordinator.get('confidence')} | overall: {overall_severity}"
         )
 
+        full_output = {
+            "overall_severity": overall_severity,
+            "confidence": confidence_result,
+            "agents": agent_results,
+            "coordinator": coordinator,
+        }
+        seal = seal_simulation(title, description, full_output)
+
         yield f"data: {json.dumps({'type': 'coordinator', 'data': coordinator})}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'overall_severity': overall_severity, 'policy_title': title})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'overall_severity': overall_severity, 'policy_title': title, 'confidence': confidence_result, 'seal': seal})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -210,3 +238,14 @@ async def validate():
         },
         "overall_severity": "Low",
     }
+
+
+@app.get('/api/validations')
+async def list_validations():
+    files = glob.glob("validation_log/*.json")
+    records = []
+    for f in files:
+        with open(f) as fp:
+            records.append(json.load(fp))
+    records.sort(key=lambda x: x["timestamp"], reverse=True)
+    return {"validations": records, "total": len(records)}

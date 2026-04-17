@@ -46,7 +46,34 @@ export default function Stage2Simulation({ state }: Props) {
 
   return (
     <div>
-      <p className="mono" style={{ fontSize: 11, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 16 }}>
+      {state.classification && (
+        <div style={{ marginBottom: 16, animation: 'fadeUp 350ms ease both' }}>
+          <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+            POLICY CLASSIFICATION
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {[state.classification.domain, state.classification.geography, state.classification.time_horizon, state.classification.primary_affected].map((tag) => (
+              <span
+                key={tag}
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-dim)',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-bright)',
+                  borderRadius: 4,
+                  padding: '4px 8px',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="mono" style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 12 }}>
         Specialist Agents
       </p>
       <div
@@ -68,7 +95,7 @@ export default function Stage2Simulation({ state }: Props) {
       </div>
 
       {(state.stage === 'personas' || state.personaResults.length > 0) && (
-        <div style={{ marginTop: 40, animation: 'fadeUp 400ms ease both' }}>
+        <div style={{ marginTop: 28, animation: 'fadeUp 240ms ease both' }}>
           <p className="mono" style={{ fontSize: 11, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
             Simulating Citizen Responses
           </p>
@@ -76,7 +103,7 @@ export default function Stage2Simulation({ state }: Props) {
             Cross-referencing with {total} synthetic Indian personas grounded in NSSO demographic data
           </p>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {Array.from({ length: total }).map((_, i) => {
               const persona = state.personaResults[i]
               const filled = !!persona
@@ -91,8 +118,8 @@ export default function Stage2Simulation({ state }: Props) {
             })}
           </div>
 
-          <div style={{ marginTop: 12, height: 4, borderRadius: 4, background: 'var(--border)' }}>
-            <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 200ms ease' }} />
+          <div style={{ marginTop: 10, height: 3, borderRadius: 4, background: 'var(--border)' }}>
+            <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 120ms linear' }} />
           </div>
 
           <p className="mono" style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 16, minHeight: 20 }}>

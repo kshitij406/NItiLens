@@ -1,11 +1,13 @@
 import { useState } from 'react'
+import { PolicyClassification } from '../types'
 
 interface Props {
   onSubmit: (title: string, description: string, mode: 'demo' | 'full') => void
   error: string | null
+  classification?: PolicyClassification | null
 }
 
-export default function Stage1Input({ onSubmit, error }: Props) {
+export default function Stage1Input({ onSubmit, error, classification }: Props) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
@@ -150,23 +152,58 @@ export default function Stage1Input({ onSubmit, error }: Props) {
         <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'center', marginTop: 2 }}>
           FULL: 50 personas · ~5 min
         </p>
+
+        {classification && (
+          <div style={{ marginTop: 16, animation: 'fadeUp 350ms ease both' }}>
+            <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+              POLICY CLASSIFICATION
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[classification.domain, classification.geography, classification.time_horizon, classification.primary_affected].map((tag) => (
+                <span
+                  key={tag}
+                  className="mono"
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--text-dim)',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-bright)',
+                    borderRadius: 4,
+                    padding: '4px 8px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </form>
 
-      {/* ── Right: placeholder ───────────────────────────────── */}
+      {/* ── Right: quick guidance ─────────────────────────────── */}
       <div style={{
-        border: '1px dashed var(--border)',
+        border: '1px solid var(--border)',
         borderRadius: 12,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: 'grid',
+        gridTemplateRows: 'auto auto 1fr',
         minHeight: 400,
-        gap: 10,
+        gap: 12,
+        padding: 18,
+        background: 'linear-gradient(180deg, rgba(19,30,46,0.55) 0%, rgba(13,21,32,0.35) 100%)',
       }}>
-        <span style={{ fontSize: 28, opacity: 0.2 }}>◈</span>
-        <p className="mono" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-          Analysis results will appear here
+        <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          QUICK INPUT GUIDE
         </p>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          Add concrete policy details: who is targeted, rollout timeline, funding route, and affected states.
+        </p>
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 8 }}>EXAMPLE FORMAT</p>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+            "Expand fertilizer subsidy to rainfed districts with DBT transfer, phased over 24 months, jointly financed by centre and states."
+          </p>
+        </div>
       </div>
     </div>
   )

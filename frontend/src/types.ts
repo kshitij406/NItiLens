@@ -26,6 +26,32 @@ export interface AnalysisState {
   coordinator: CoordinatorResult | null
   overall_severity: string
   policy_title: string
+  classification: PolicyClassification | null
+  confidence: ConfidenceResult | null
+  seal: AnalysisSeal | null
+}
+
+export interface PolicyClassification {
+  domain: string
+  primary_affected: string
+  geography: string
+  time_horizon: string
+  key_attributes: string[]
+}
+
+export interface ConfidenceResult {
+  score: number
+  out_of: number
+  label: 'High' | 'Medium' | 'Low'
+  reasons: string[]
+  caveats: string[]
+  caveat_text: string
+}
+
+export interface AnalysisSeal {
+  hash: string
+  timestamp: string
+  sealed: boolean
 }
 
 export interface PersonaValidation {

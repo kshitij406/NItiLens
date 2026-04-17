@@ -14,6 +14,12 @@ const SEV_COLOR: Record<string, string> = {
   Low: 'var(--low)',
 }
 
+const CONF_COLOR: Record<string, string> = {
+  High: '#10B981',
+  Medium: '#F59E0B',
+  Low: '#EF4444',
+}
+
 const REGION_COLOR: Record<string, string> = {
   North: '#3B82F6',
   South: '#10B981',
@@ -159,11 +165,12 @@ interface Props {
 }
 
 export default function Stage3Findings({ state, onReset }: Props) {
-  const { agents, coordinator, overall_severity, policy_title, personaResults } = state
+  const { agents, coordinator, overall_severity, policy_title, personaResults, confidence, seal } = state
   const sc = SEV_COLOR[overall_severity] ?? SEV_COLOR.Medium
+  const confColor = confidence ? CONF_COLOR[confidence.label] : 'var(--text-dim)'
 
   return (
-    <div style={{ animation: 'fadeUp 500ms ease both' }}>
+    <div style={{ animation: 'fadeUp 280ms ease both' }}>
       <div className="severity-banner" style={{ borderLeftColor: sc, marginBottom: 8 }}>
         <div>
           <p className="mono" style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>
@@ -173,18 +180,25 @@ export default function Stage3Findings({ state, onReset }: Props) {
             {overall_severity}
           </p>
         </div>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'right', maxWidth: 280 }}>
-          {policy_title}
-        </p>
+        <div style={{ textAlign: 'right', maxWidth: 320 }}>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+            {policy_title}
+          </p>
+          {confidence && (
+            <p className="mono" style={{ fontSize: 12, marginTop: 6, color: confColor }}>
+              System Confidence: {confidence.score}/{confidence.out_of}
+            </p>
+          )}
+        </div>
       </div>
 
-      <p className="mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 24 }}>
+      <p className="mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 18 }}>
         Consensus across 4 specialist agents and {personaResults.length} synthetic Indian personas
       </p>
 
       <div
         className="agent-grid"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}
       >
         {AGENT_ORDER.map((name, i) => {
           const result = agents.find(a => a.agent === name)
@@ -201,6 +215,39 @@ export default function Stage3Findings({ state, onReset }: Props) {
       </div>
 
       {coordinator && <CoordinatorCard coordinator={coordinator} personas={personaResults} />}
+
+      {confidence && confidence.caveats.length > 0 && (
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            background: 'var(--bg-surface)',
+            borderLeft: '3px solid #F59E0B',
+            padding: '12px 16px',
+            borderRadius: 8,
+            marginTop: 18,
+          }}
+        >
+          <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+            ANALYTICAL CAVEATS
+          </p>
+          {confidence.caveats.map((c) => (
+            <p key={c} style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              • {c}
+            </p>
+          ))}
+          <p style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginTop: 8 }}>
+            {confidence.caveat_text}
+          </p>
+        </div>
+      )}
+
+      {seal && (
+        <div style={{ marginTop: 18 }}>
+          <p className="mono" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+            Analysis sealed · <span style={{ color: 'var(--text-secondary)' }}>{seal.hash}</span> · {seal.timestamp}
+          </p>
+        </div>
+      )}
 
       <div style={{ marginTop: 32, display: 'flex', justifyContent: 'center' }}>
         <button

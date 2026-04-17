@@ -16,6 +16,7 @@ COORDINATOR_MAX_TOKENS = 750
 PERSONA_MAX_TOKENS = 520
 
 AGENT_USER_TEMPLATE = (
+    "Policy classification: {classification}\n\n"
     "Policy Title: {title}\n\n"
     "Policy Description: {description}\n\n"
     "Return ONLY this JSON:\n"
@@ -234,9 +235,26 @@ async def _post_openrouter(payload: dict, timeout: float, retries: int = 2) -> h
     raise RuntimeError("OpenRouter request failed")
 
 
-async def _run_agent(agent_name: str, system: str, title: str, description: str) -> dict:
+async def _run_agent(
+    agent_name: str,
+    system: str,
+    title: str,
+    description: str,
+    classification: dict | None = None,
+) -> dict:
+    if classification is None:
+        classification = {
+            "domain": "other",
+            "primary_affected": "all",
+            "geography": "national",
+            "time_horizon": "short_term",
+            "key_attributes": ["income", "employment", "region"],
+        }
     user_msg = AGENT_USER_TEMPLATE.format(
-        title=title, description=description, agent_name=agent_name
+        title=title,
+        description=description,
+        agent_name=agent_name,
+        classification=json.dumps(classification),
     )
     payload = {
         "model": MODEL,
@@ -256,20 +274,20 @@ async def _run_agent(agent_name: str, system: str, title: str, description: str)
         return _default_agent(agent_name)
 
 
-async def fiscal_agent(title: str, description: str) -> dict:
-    return await _run_agent("Fiscal Analyst", FISCAL_SYSTEM, title, description)
+async def fiscal_agent(title: str, description: str, classification: dict | None = None) -> dict:
+    return await _run_agent("Fiscal Analyst", FISCAL_SYSTEM, title, description, classification)
 
 
-async def labor_agent(title: str, description: str) -> dict:
-    return await _run_agent("Labor & Employment Analyst", LABOR_SYSTEM, title, description)
+async def labor_agent(title: str, description: str, classification: dict | None = None) -> dict:
+    return await _run_agent("Labor & Employment Analyst", LABOR_SYSTEM, title, description, classification)
 
 
-async def equity_agent(title: str, description: str) -> dict:
-    return await _run_agent("Equity & Social Impact Analyst", EQUITY_SYSTEM, title, description)
+async def equity_agent(title: str, description: str, classification: dict | None = None) -> dict:
+    return await _run_agent("Equity & Social Impact Analyst", EQUITY_SYSTEM, title, description, classification)
 
 
-async def regional_agent(title: str, description: str) -> dict:
-    return await _run_agent("Regional & Federal Analyst", REGIONAL_SYSTEM, title, description)
+async def regional_agent(title: str, description: str, classification: dict | None = None) -> dict:
+    return await _run_agent("Regional & Federal Analyst", REGIONAL_SYSTEM, title, description, classification)
 
 
 async def coordinator_agent(title: str, all_results: list) -> dict:

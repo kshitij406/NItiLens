@@ -1,5 +1,13 @@
 import { useState, useRef, useCallback } from 'react'
-import { AnalysisState, AgentResult, CoordinatorResult, PersonaResult } from './types'
+import {
+  AnalysisState,
+  AgentResult,
+  CoordinatorResult,
+  PersonaResult,
+  PolicyClassification,
+  ConfidenceResult,
+  AnalysisSeal,
+} from './types'
 import Stage1Input from './components/Stage1Input'
 import Stage2Simulation from './components/Stage2Simulation'
 import Stage3Findings from './components/Stage3Findings'
@@ -17,6 +25,9 @@ const INITIAL_STATE: AnalysisState = {
   coordinator: null,
   overall_severity: '',
   policy_title: '',
+  classification: null,
+  confidence: null,
+  seal: null,
 }
 
 const TABS = ['Analyse Policy', 'Historical Validation']
@@ -74,6 +85,10 @@ export default function App() {
               }))
             }
 
+            if (event.type === 'classification') {
+              setState(prev => ({ ...prev, classification: event.data as PolicyClassification }))
+            }
+
             if (event.type === 'coordinator') {
               setState(prev => ({ ...prev, coordinator: event.data as CoordinatorResult }))
             }
@@ -96,6 +111,8 @@ export default function App() {
                 ...prev,
                 overall_severity: event.overall_severity as string,
                 policy_title: (event.policy_title as string) ?? prev.policy_title,
+                confidence: (event.confidence as ConfidenceResult) ?? prev.confidence,
+                seal: (event.seal as AnalysisSeal) ?? prev.seal,
                 stage: 'complete',
               }))
             }
@@ -185,7 +202,7 @@ export default function App() {
           <>
             {/* Stage 1 — idle */}
             {state.stage === 'idle' && (
-              <Stage1Input onSubmit={startAnalysis} error={error} />
+              <Stage1Input onSubmit={startAnalysis} error={error} classification={state.classification} />
             )}
 
             {/* Stage 2 — agents + personas */}
