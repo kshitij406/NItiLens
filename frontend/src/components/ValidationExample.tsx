@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { ValidationResult } from '../types'
 import AgentCard from './AgentCard'
 import { CoordinatorResult } from '../types'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+import { API_BASE } from '../config'
 
 const SEV_COLOR: Record<string, string> = {
   High: 'var(--high)',

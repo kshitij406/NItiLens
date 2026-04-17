@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 interface Props {
-  onSubmit: (title: string, description: string) => void
+  onSubmit: (title: string, description: string, mode: 'demo' | 'full') => void
   error: string | null
 }
 
@@ -9,12 +9,13 @@ export default function Stage1Input({ onSubmit, error }: Props) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<'demo' | 'full'>('demo')
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim() || !description.trim()) return
     setLoading(true)
-    onSubmit(title.trim(), description.trim())
+    onSubmit(title.trim(), description.trim(), mode)
     // loading resets when App changes stage
   }
 
@@ -102,6 +103,52 @@ export default function Stage1Input({ onSubmit, error }: Props) {
 
         <p className="mono" style={{ fontSize: 11, color: 'var(--text-dim)', textAlign: 'center', marginTop: 10 }}>
           Powered by 4 specialist AI agents + coordinator synthesis
+        </p>
+
+        <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setMode('demo')}
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              padding: '8px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "'DM Sans', sans-serif",
+              cursor: 'pointer',
+              border: mode === 'demo' ? '1px solid var(--accent)' : '1px solid var(--border-bright)',
+              background: mode === 'demo' ? 'var(--accent)' : 'transparent',
+              color: mode === 'demo' ? '#fff' : 'var(--text-secondary)',
+            }}
+          >
+            DEMO
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('full')}
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              padding: '8px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "'DM Sans', sans-serif",
+              cursor: 'pointer',
+              border: mode === 'full' ? '1px solid var(--accent)' : '1px solid var(--border-bright)',
+              background: mode === 'full' ? 'var(--accent)' : 'transparent',
+              color: mode === 'full' ? '#fff' : 'var(--text-secondary)',
+            }}
+          >
+            FULL
+          </button>
+        </div>
+
+        <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'center', marginTop: 8 }}>
+          DEMO: 30 personas · ~2 min
+        </p>
+        <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'center', marginTop: 2 }}>
+          FULL: 50 personas · ~5 min
         </p>
       </form>
 

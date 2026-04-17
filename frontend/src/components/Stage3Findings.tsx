@@ -1,4 +1,4 @@
-import { AnalysisState, CoordinatorResult } from '../types'
+import { AnalysisState, CoordinatorResult, PersonaResult } from '../types'
 import AgentCard from './AgentCard'
 
 const AGENT_ORDER = [
@@ -14,8 +14,55 @@ const SEV_COLOR: Record<string, string> = {
   Low: 'var(--low)',
 }
 
-function CoordinatorCard({ coordinator }: { coordinator: CoordinatorResult }) {
+const REGION_COLOR: Record<string, string> = {
+  North: '#3B82F6',
+  South: '#10B981',
+  East: '#F59E0B',
+  West: '#8B5CF6',
+  NE: '#EC4899',
+}
+
+const NORTH_STATES = new Set([
+  'Uttar Pradesh', 'Bihar', 'Punjab', 'Haryana', 'Himachal Pradesh',
+  'Uttarakhand', 'J&K', 'Delhi', 'Rajasthan', 'Madhya Pradesh',
+])
+const SOUTH_STATES = new Set(['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Telangana'])
+const WEST_STATES = new Set(['Maharashtra', 'Gujarat', 'Goa'])
+const NORTHEAST_STATES = new Set(['Manipur', 'Mizoram', 'Nagaland', 'Meghalaya', 'Sikkim', 'Tripura', 'Arunachal'])
+
+function getRegion(state: string): 'North' | 'South' | 'East' | 'West' | 'NE' {
+  if (NORTHEAST_STATES.has(state)) return 'NE'
+  if (NORTH_STATES.has(state)) return 'North'
+  if (SOUTH_STATES.has(state)) return 'South'
+  if (WEST_STATES.has(state)) return 'West'
+  return 'East'
+}
+
+function computeConsensus(personas: PersonaResult[]) {
+  const significant = personas.filter(p =>
+    Array.isArray(p.validations) && p.validations.some(v => Number(v.severity_for_me) >= 2)
+  ).length
+
+  const byRegion = { North: 0, South: 0, East: 0, West: 0, NE: 0 }
+  for (const p of personas) {
+    const hasSignificant = Array.isArray(p.validations) && p.validations.some(v => Number(v.severity_for_me) >= 2)
+    if (hasSignificant) {
+      const region = getRegion(p.state)
+      byRegion[region] += 1
+    }
+  }
+
+  const missed = personas
+    .filter(p => typeof p.missed_risk === 'string' && p.missed_risk.trim().length > 0)
+    .map(p => ({ name: p.name, state: p.state, text: (p.missed_risk as string).trim() }))
+
+  return { significant, byRegion, missed }
+}
+
+function CoordinatorCard({ coordinator, personas }: { coordinator: CoordinatorResult; personas: PersonaResult[] }) {
   const confColor = SEV_COLOR[coordinator.confidence] ?? SEV_COLOR.Medium
+  const consensus = computeConsensus(personas)
+
   return (
     <div className="coordinator-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -50,6 +97,58 @@ function CoordinatorCard({ coordinator }: { coordinator: CoordinatorResult }) {
           </p>
         </div>
       ))}
+
+      <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 14px' }} />
+      <p className="mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
+        PERSONA CONSENSUS
+      </p>
+      <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 10 }}>
+        {consensus.significant} of {personas.length} personas identified significant impact (severity_for_me {'>='} 2)
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {([
+          ['North', consensus.byRegion.North],
+          ['South', consensus.byRegion.South],
+          ['East', consensus.byRegion.East],
+          ['West', consensus.byRegion.West],
+          ['NE', consensus.byRegion.NE],
+        ] as const).map(([label, count]) => (
+          <span
+            key={label}
+            className="mono"
+            style={{
+              fontSize: 10,
+              border: `1px solid ${REGION_COLOR[label]}`,
+              color: REGION_COLOR[label],
+              borderRadius: 20,
+              padding: '3px 8px',
+            }}
+          >
+            {label}: {count}
+          </span>
+        ))}
+      </div>
+
+      {consensus.missed.length > 0 && (
+        <>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '18px 0 12px' }} />
+          <p className="mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
+            CITIZEN-FLAGGED RISKS
+          </p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {consensus.missed.map((item, idx) => (
+              <div key={`${item.name}-${idx}`} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                <p className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>
+                  {item.name} · {item.state}
+                </p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {item.text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -60,12 +159,11 @@ interface Props {
 }
 
 export default function Stage3Findings({ state, onReset }: Props) {
-  const { agents, coordinator, overall_severity, policy_title } = state
+  const { agents, coordinator, overall_severity, policy_title, personaResults } = state
   const sc = SEV_COLOR[overall_severity] ?? SEV_COLOR.Medium
 
   return (
     <div style={{ animation: 'fadeUp 500ms ease both' }}>
-      {/* Overall severity banner */}
       <div className="severity-banner" style={{ borderLeftColor: sc, marginBottom: 8 }}>
         <div>
           <p className="mono" style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>
@@ -81,10 +179,9 @@ export default function Stage3Findings({ state, onReset }: Props) {
       </div>
 
       <p className="mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 24 }}>
-        Consensus across 4 specialist agents and 50 synthetic Indian personas
+        Consensus across 4 specialist agents and {personaResults.length} synthetic Indian personas
       </p>
 
-      {/* 2×2 agent grid */}
       <div
         className="agent-grid"
         style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}
@@ -103,10 +200,8 @@ export default function Stage3Findings({ state, onReset }: Props) {
         })}
       </div>
 
-      {/* Coordinator card */}
-      {coordinator && <CoordinatorCard coordinator={coordinator} />}
+      {coordinator && <CoordinatorCard coordinator={coordinator} personas={personaResults} />}
 
-      {/* Reset */}
       <div style={{ marginTop: 32, display: 'flex', justifyContent: 'center' }}>
         <button
           onClick={onReset}

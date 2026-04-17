@@ -1,17 +1,24 @@
+import asyncio
 import json
-import os
 
-import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from agents import AGENTS, run_agent, run_coordinator, compute_overall_severity
+from agents import (
+    DEMO_PERSONAS,
+    FULL_PERSONAS,
+    _default_agent,
+    coordinator_agent,
+    equity_agent,
+    fiscal_agent,
+    labor_agent,
+    regional_agent,
+    run_persona,
+)
 
 load_dotenv()
-
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 app = FastAPI(title="NitiLens API")
 
@@ -24,39 +31,93 @@ app.add_middleware(
 )
 
 
-@app.get("/api/analyse/stream")
-async def analyse_stream(title: str, description: str):
+@app.get('/api/analyse/stream')
+async def analyse_stream(title: str, description: str, mode: str = 'demo'):
     async def generate():
-        all_results = []
-        async with httpx.AsyncClient() as client:
-            for agent in AGENTS:
-                result = await run_agent(
-                    client, OPENROUTER_API_KEY,
-                    agent["name"], agent["system"],
-                    title, description,
-                )
-                all_results.append(result)
-                yield f"data: {json.dumps({'type': 'agent', 'data': result})}\n\n"
+        agent_results = []
 
-            coordinator = await run_coordinator(
-                client, OPENROUTER_API_KEY, title, all_results
+        # Run 4 agents sequentially, emit each as it completes
+        for agent_fn in [fiscal_agent, labor_agent, equity_agent, regional_agent]:
+            try:
+                result = await agent_fn(title, description)
+            except Exception:
+                result = _default_agent(agent_fn.__name__)
+            agent_results.append(result)
+            yield f"data: {json.dumps({'type': 'agent', 'data': result})}\n\n"
+            await asyncio.sleep(0.1)
+
+        # Select personas based on mode
+        personas = DEMO_PERSONAS if mode == "demo" else FULL_PERSONAS
+        total = len(personas)
+
+        # Extract top risks from agent results for persona validation
+        all_risks = []
+        for agent in agent_results:
+            all_risks.extend(agent.get('risks', [])[:2])
+        top_risks = all_risks[:8]  # Cap at 8 risks for persona prompts
+
+        # Run personas in batches to avoid rate limits
+        BATCH_SIZE = 5
+        for batch_start in range(0, total, BATCH_SIZE):
+            batch = personas[batch_start:batch_start + BATCH_SIZE]
+            batch_results = await asyncio.gather(
+                *[run_persona(p, title, top_risks) for p in batch],
+                return_exceptions=True
             )
-            yield f"data: {json.dumps({'type': 'coordinator', 'data': coordinator})}\n\n"
+            for i, result in enumerate(batch_results):
+                persona = batch[i]
+                if isinstance(result, Exception):
+                    result = {
+                        "persona_id": persona["id"],
+                        "name": persona["name"],
+                        "state": persona["state"],
+                        "occupation": persona["occupation"],
+                        "caste_category": persona["caste_category"],
+                        "validations": [],
+                        "missed_risk": None,
+                    }
+                yield f"data: {json.dumps({'type': 'persona', 'data': result, 'index': batch_start + i, 'total': total})}\n\n"
+            await asyncio.sleep(0.5)  # Brief pause between batches to respect rate limits
 
-            overall = compute_overall_severity(all_results)
-            yield f"data: {json.dumps({'type': 'done', 'overall_severity': overall})}\n\n"
+        # Run coordinator
+        try:
+            coordinator = await coordinator_agent(title, agent_results)
+        except Exception:
+            coordinator = {
+                'verdict': 'Synthesis unavailable.',
+                'key_risk': 'Unable to determine.',
+                'blind_spot': 'Unable to determine.',
+                'sharpest_disagreement': 'Unable to determine.',
+                'confidence': 'Low'
+            }
+
+        # Compute overall severity
+        severity_order = {'High': 3, 'Medium': 2, 'Low': 1}
+        overall = max(
+            (r.get('severity', 'Low') for r in agent_results),
+            key=lambda s: severity_order.get(s, 0),
+            default='Medium'
+        )
+
+        yield f"data: {json.dumps({'type': 'coordinator', 'data': coordinator})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'overall_severity': overall, 'policy_title': title})}\n\n"
 
     return StreamingResponse(
         generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+        }
     )
 
 
-@app.get("/api/validate")
+@app.get('/api/validate')
 async def validate():
     return {
-        "policy_title": "MGNREGA — Mahatma Gandhi National Rural Employment Guarantee Act (2005)",
+        "policy_title": "MGNREGA - Mahatma Gandhi National Rural Employment Guarantee Act (2005)",
         "note": "Retrospective validation case. MGNREGA is one of India's most studied policy interventions with 20 years of outcome data from NSSO, World Bank, and peer-reviewed research.",
         "agents": [
             {
@@ -87,7 +148,7 @@ async def validate():
                     "Female labor force participation increased 12-18% in high-implementation districts",
                 ],
                 "severity": "Low",
-                "most_affected": "Landless agricultural laborers and rural women — 270 million unique workers enrolled by 2020",
+                "most_affected": "Landless agricultural laborers and rural women - 270 million unique workers enrolled by 2020",
                 "summary": "MGNREGA is among the most documented labor interventions in development economics. NSSO and ILO data confirm sustained rural wage floor effects and significant female workforce entry. Implementation quality varied enormously by state, with Kerala and Andhra Pradesh showing strongest outcomes.",
             },
             {
@@ -103,7 +164,7 @@ async def validate():
                     "Asset creation disproportionately benefited poor landless households",
                 ],
                 "severity": "Low",
-                "most_affected": "SC and ST landless households in BIMARU states — documented to have reduced extreme poverty by 14% in high-implementation blocks",
+                "most_affected": "SC and ST landless households in BIMARU states - documented to have reduced extreme poverty by 14% in high-implementation blocks",
                 "summary": "MGNREGA is one of the few Indian policies with documented positive equity outcomes at scale. Randomised control trials confirmed significant consumption gains for the poorest quintile. Caste-based exclusion in panchayat implementation was the primary equity failure.",
             },
             {
@@ -125,9 +186,9 @@ async def validate():
         ],
         "coordinator": {
             "verdict": "MGNREGA is a net positive intervention with documented employment and wage floor effects at scale. Its primary failures were administrative rather than conceptual, concentrated in low-capacity states.",
-            "key_risk": "Implementation quality variance across states meant the poorest districts — which needed the scheme most — received the weakest delivery.",
+            "key_risk": "Implementation quality variance across states meant the poorest districts - which needed the scheme most - received the weakest delivery.",
             "blind_spot": "All agents underweighted the long-term asset creation value. MGNREGA built roads, ponds, and watershed structures that compounded rural productivity gains beyond the direct wage effect.",
-            "sharpest_disagreement": "Fiscal and Labor agents diverged on net value — Fiscal flagged persistent overruns while Labor confirmed the wage floor effect. Both are correct; they reflect different time horizons.",
+            "sharpest_disagreement": "Fiscal and Labor agents diverged on net value - Fiscal flagged persistent overruns while Labor confirmed the wage floor effect. Both are correct; they reflect different time horizons.",
             "confidence": "High",
         },
         "overall_severity": "Low",

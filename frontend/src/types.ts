@@ -20,9 +20,34 @@ export interface AnalysisState {
   agents: AgentResult[]
   activeAgent: number
   personaCount: number
+  mode: 'demo' | 'full'
+  personaResults: PersonaResult[]
+  personaProgress: PersonaProgress
   coordinator: CoordinatorResult | null
   overall_severity: string
   policy_title: string
+}
+
+export interface PersonaValidation {
+  risk_index: number
+  applies: boolean
+  severity_for_me: number
+  reason: string
+}
+
+export interface PersonaResult {
+  persona_id: number
+  name: string
+  state: string
+  occupation?: string
+  caste_category?: string
+  validations: PersonaValidation[]
+  missed_risk: string | null
+}
+
+export interface PersonaProgress {
+  current: number
+  total: number
 }
 
 export interface ValidationResult {

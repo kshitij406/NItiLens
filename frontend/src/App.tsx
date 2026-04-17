@@ -1,17 +1,19 @@
 import { useState, useRef, useCallback } from 'react'
-import { AnalysisState, AgentResult, CoordinatorResult } from './types'
+import { AnalysisState, AgentResult, CoordinatorResult, PersonaResult } from './types'
 import Stage1Input from './components/Stage1Input'
 import Stage2Simulation from './components/Stage2Simulation'
 import Stage3Findings from './components/Stage3Findings'
 import ValidationExample from './components/ValidationExample'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+import { API_BASE } from './config'
 
 const INITIAL_STATE: AnalysisState = {
   stage: 'idle',
   agents: [],
   activeAgent: 0,
   personaCount: 0,
+  mode: 'demo',
+  personaResults: [],
+  personaProgress: { current: 0, total: 0 },
   coordinator: null,
   overall_severity: '',
   policy_title: '',
@@ -23,55 +25,92 @@ export default function App() {
   const [state, setState] = useState<AnalysisState>(INITIAL_STATE)
   const [activeTab, setActiveTab] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const esRef = useRef<EventSource | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  const startAnalysis = useCallback((title: string, description: string) => {
-    esRef.current?.close()
+  const startAnalysis = useCallback(async (title: string, description: string, mode: 'demo' | 'full') => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setError(null)
     setState({
       ...INITIAL_STATE,
       stage: 'agents',
+      mode,
       policy_title: title,
     })
 
-    const params = new URLSearchParams({ title, description })
-    const es = new EventSource(`${API_BASE}/api/analyse/stream?${params}`)
-    esRef.current = es
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/analyse/stream?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}&mode=${mode}`,
+        { signal: controller.signal }
+      )
 
-    es.onmessage = (e: MessageEvent) => {
-      try {
-        const event = JSON.parse(e.data as string)
-
-        if (event.type === 'agent') {
-          setState(prev => ({
-            ...prev,
-            agents: [...prev.agents, event.data as AgentResult],
-            activeAgent: prev.agents.length + 1,
-          }))
-        } else if (event.type === 'coordinator') {
-          setState(prev => ({ ...prev, coordinator: event.data as CoordinatorResult }))
-        } else if (event.type === 'done') {
-          setState(prev => ({
-            ...prev,
-            overall_severity: event.overall_severity as string,
-            stage: 'personas',
-          }))
-          es.close()
-        }
-      } catch {
-        // ignore malformed event
+      if (!response.ok || !response.body) {
+        throw new Error('Stream connection failed')
       }
-    }
 
-    es.onerror = () => {
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const event = JSON.parse(line.slice(6).trim())
+
+            if (event.type === 'agent') {
+              setState(prev => ({
+                ...prev,
+                agents: [...prev.agents, event.data as AgentResult],
+                activeAgent: prev.activeAgent + 1,
+              }))
+            }
+
+            if (event.type === 'coordinator') {
+              setState(prev => ({ ...prev, coordinator: event.data as CoordinatorResult }))
+            }
+
+            if (event.type === 'persona') {
+              setState(prev => ({
+                ...prev,
+                stage: 'personas',
+                personaResults: [...prev.personaResults, event.data as PersonaResult],
+                personaProgress: {
+                  current: (event.index as number) + 1,
+                  total: event.total as number,
+                },
+                personaCount: prev.personaCount + 1,
+              }))
+            }
+
+            if (event.type === 'done') {
+              setState(prev => ({
+                ...prev,
+                overall_severity: event.overall_severity as string,
+                policy_title: (event.policy_title as string) ?? prev.policy_title,
+                stage: 'complete',
+              }))
+            }
+          } catch (e) {
+            console.error('SSE parse error:', e)
+          }
+        }
+      }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') {
+        return
+      }
       setError('Analysis failed — check that the backend is running on port 8000.')
       setState(prev => ({ ...prev, stage: 'idle' }))
-      es.close()
     }
-  }, [])
-
-  const handlePersonasDone = useCallback(() => {
-    setState(prev => ({ ...prev, stage: 'complete' }))
   }, [])
 
   return (
@@ -151,7 +190,7 @@ export default function App() {
 
             {/* Stage 2 — agents + personas */}
             {(state.stage === 'agents' || state.stage === 'personas') && (
-              <Stage2Simulation state={state} onPersonasDone={handlePersonasDone} />
+              <Stage2Simulation state={state} />
             )}
 
             {/* Stage 3 — complete */}
