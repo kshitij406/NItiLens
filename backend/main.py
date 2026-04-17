@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from agents import (
     DEMO_PERSONAS,
     FULL_PERSONAS,
+    MODEL,
     _default_agent,
     coordinator_agent,
     equity_agent,
@@ -19,6 +21,7 @@ from agents import (
 )
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NitiLens API")
 
@@ -35,6 +38,7 @@ app.add_middleware(
 async def analyse_stream(title: str, description: str, mode: str = 'demo'):
     async def generate():
         agent_results = []
+        persona_results = []
 
         # Run 4 agents sequentially, emit each as it completes
         for agent_fn in [fiscal_agent, labor_agent, equity_agent, regional_agent]:
@@ -43,6 +47,7 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
             except Exception:
                 result = _default_agent(agent_fn.__name__)
             agent_results.append(result)
+            logger.info(f"Agent complete: {result.get('agent')} | severity: {result.get('severity')}")
             yield f"data: {json.dumps({'type': 'agent', 'data': result})}\n\n"
             await asyncio.sleep(0.1)
 
@@ -57,7 +62,7 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
         top_risks = all_risks[:8]  # Cap at 8 risks for persona prompts
 
         # Run personas in batches to avoid rate limits
-        BATCH_SIZE = 5
+        BATCH_SIZE = 2 if mode == "demo" else 3
         for batch_start in range(0, total, BATCH_SIZE):
             batch = personas[batch_start:batch_start + BATCH_SIZE]
             batch_results = await asyncio.gather(
@@ -76,8 +81,11 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
                         "validations": [],
                         "missed_risk": None,
                     }
+                persona_results.append(result)
                 yield f"data: {json.dumps({'type': 'persona', 'data': result, 'index': batch_start + i, 'total': total})}\n\n"
-            await asyncio.sleep(0.5)  # Brief pause between batches to respect rate limits
+            await asyncio.sleep(1.0)  # Brief pause between batches to respect rate limits
+
+        logger.info(f"Personas complete: {len(persona_results)} responses")
 
         # Run coordinator
         try:
@@ -93,14 +101,18 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
 
         # Compute overall severity
         severity_order = {'High': 3, 'Medium': 2, 'Low': 1}
-        overall = max(
+        overall_severity = max(
             (r.get('severity', 'Low') for r in agent_results),
             key=lambda s: severity_order.get(s, 0),
             default='Medium'
         )
 
+        logger.info(
+            f"Coordinator complete | confidence: {coordinator.get('confidence')} | overall: {overall_severity}"
+        )
+
         yield f"data: {json.dumps({'type': 'coordinator', 'data': coordinator})}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'overall_severity': overall, 'policy_title': title})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'overall_severity': overall_severity, 'policy_title': title})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -112,6 +124,11 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
             'Access-Control-Allow-Origin': '*',
         }
     )
+
+
+@app.get('/health')
+async def health():
+    return {"status": "ok", "model": MODEL}
 
 
 @app.get('/api/validate')

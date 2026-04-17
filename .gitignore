@@ -16,6 +16,8 @@ env/
 !.env.example
 
 # Node
+node_modules/
+dist/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
@@ -35,6 +37,7 @@ frontend/.vite/
 npm-debug.log*
 
 # Render / Vercel
+.vercel
 .vercel/
 
 Civica

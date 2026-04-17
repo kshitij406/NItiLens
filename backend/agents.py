@@ -1,12 +1,19 @@
 import json
 import os
 import re
+import asyncio
 
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "google/gemini-2.0-flash-exp:free"
+MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.1-flash-lite-preview")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+AGENT_MAX_TOKENS = 650
+COORDINATOR_MAX_TOKENS = 750
+PERSONA_MAX_TOKENS = 520
 
 AGENT_USER_TEMPLATE = (
     "Policy Title: {title}\n\n"
@@ -203,12 +210,37 @@ def _headers() -> dict:
     }
 
 
+async def _post_openrouter(payload: dict, timeout: float, retries: int = 2) -> httpx.Response:
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(OPENROUTER_URL, json=payload, headers=_headers())
+
+            if response.status_code in (429, 500, 502, 503, 504) and attempt < retries:
+                await asyncio.sleep(0.8 * (attempt + 1))
+                continue
+
+            return response
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries:
+                await asyncio.sleep(0.8 * (attempt + 1))
+                continue
+            raise
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("OpenRouter request failed")
+
+
 async def _run_agent(agent_name: str, system: str, title: str, description: str) -> dict:
     user_msg = AGENT_USER_TEMPLATE.format(
         title=title, description=description, agent_name=agent_name
     )
     payload = {
         "model": MODEL,
+        "max_tokens": AGENT_MAX_TOKENS,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user_msg},
@@ -216,8 +248,7 @@ async def _run_agent(agent_name: str, system: str, title: str, description: str)
     }
 
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(OPENROUTER_URL, json=payload, headers=_headers())
+        response = await _post_openrouter(payload, timeout=45.0)
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
         return parse_response(content, agent_name)
@@ -247,6 +278,7 @@ async def coordinator_agent(title: str, all_results: list) -> dict:
     )
     payload = {
         "model": MODEL,
+        "max_tokens": COORDINATOR_MAX_TOKENS,
         "messages": [
             {"role": "system", "content": COORDINATOR_SYSTEM},
             {"role": "user", "content": user_msg},
@@ -254,8 +286,7 @@ async def coordinator_agent(title: str, all_results: list) -> dict:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(OPENROUTER_URL, json=payload, headers=_headers())
+        response = await _post_openrouter(payload, timeout=45.0)
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
         start = content.find("{")
@@ -320,32 +351,34 @@ missed_risk: a risk the specialists missed that specifically affects my demograp
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "HTTP-Referer": "https://nitilens.vercel.app",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "google/gemini-2.0-flash-exp:free",
-                    "messages": [
-                        {"role": "system", "content": PERSONA_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_message},
-                    ],
-                },
-            )
+        response = await _post_openrouter(
+            {
+                "model": MODEL,
+                "max_tokens": PERSONA_MAX_TOKENS,
+                "messages": [
+                    {"role": "system", "content": PERSONA_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+            },
+            timeout=30.0,
+        )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
-        parsed = parse_response(content, persona["name"])
-        parsed.setdefault("persona_id", persona["id"])
-        parsed.setdefault("name", persona["name"])
-        parsed.setdefault("state", persona["state"])
-        parsed.setdefault("occupation", persona["occupation"])
-        parsed.setdefault("caste_category", persona["caste_category"])
-        parsed.setdefault("validations", [])
-        parsed.setdefault("missed_risk", None)
-        return parsed
+        cleaned = re.sub(r"```(?:json)?\s*", "", content or "").strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start == -1 or end == -1:
+            return fallback
+        parsed = json.loads(cleaned[start : end + 1])
+
+        return {
+            "persona_id": parsed.get("persona_id", persona["id"]),
+            "name": parsed.get("name", persona["name"]),
+            "state": parsed.get("state", persona["state"]),
+            "occupation": parsed.get("occupation", persona["occupation"]),
+            "caste_category": parsed.get("caste_category", persona["caste_category"]),
+            "validations": parsed.get("validations", []),
+            "missed_risk": parsed.get("missed_risk", None),
+        }
     except Exception:
         return fallback
