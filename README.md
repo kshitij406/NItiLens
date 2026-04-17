@@ -1,14 +1,14 @@
 # NitiLens — AI Policy Stress Tester for India
 **Team JFKN | DayZero 2.0 | CodeNex SRMIST | AI & ML Track**
 
-🔗 Live: https://niti-lens.vercel.app
-📦 Backend: https://nitilens.onrender.com
+ Live: https://niti-lens.vercel.app
+ Backend: https://nitilens.onrender.com
 
 ## What it does
 NitiLens stress-tests Indian government policies through a 4-stage AI pipeline:
 
 1. **Policy Classifier** — Categorises the policy by domain, geography, and affected demographics before analysis begins
-2. **4 Specialist Agents** — Fiscal Analyst, Labor Economist, Equity Researcher, Regional Analyst run sequentially, each independently assessing risk through their domain lens
+2. **4 Specialist Agents** — Fiscal Analyst, Labour Economist, Equity Researcher, Regional Analyst run sequentially, each independently assessing risk through their domain lens
 3. **30/50 Synthetic Indian Personas** — Real LLM calls grounded in Indian demographic data (NSSO, Census 2011). Each persona reads specialist risks and responds from their own position. Demo mode: 30 personas. Full mode: 50 personas.
 4. **Coordinator Synthesis** — A final agent synthesises all findings into an intelligence briefing with verdict, key risk, blind spot, and sharpest agent disagreement
 
