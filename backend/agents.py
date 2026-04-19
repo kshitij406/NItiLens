@@ -8,12 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.1-flash-lite-preview")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-AGENT_MAX_TOKENS = 650
-COORDINATOR_MAX_TOKENS = 750
-PERSONA_MAX_TOKENS = 520
+BACKBOARD_BASE = "https://app.backboard.io/api"
+BACKBOARD_API_KEY = os.getenv("BACKBOARD_API_KEY", "")
+MODEL = "backboard"
 
 AGENT_USER_TEMPLATE = (
     "Policy classification: {classification}\n\n"
@@ -47,33 +44,28 @@ FISCAL_SYSTEM = (
     "You are a senior fiscal policy analyst specialising in Indian government finance. "
     "Analyse the given policy for fiscal impact, tax revenue implications, government expenditure, "
     "deficit risks, and debt sustainability. Focus on Union Budget alignment and CAG audit concerns. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
-    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
+    "Respond ONLY with valid JSON."
 )
 
 LABOR_SYSTEM = (
     "You are a labor economist specialising in India's workforce. "
     "Analyse the given policy for job creation or loss, wage effects, impact on the informal sector "
     "which employs 90% of Indian workers, migrant labor, and gig economy workers. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
-    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
+    "Respond ONLY with valid JSON."
 )
 
 EQUITY_SYSTEM = (
     "You are a social equity researcher specialising in India. "
     "Analyse the given policy for effects on Scheduled Castes, Scheduled Tribes, OBCs, women, "
     "and low-income rural households. Identify which groups bear disproportionate costs or benefits. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
-    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
+    "Respond ONLY with valid JSON."
 )
 
 REGIONAL_SYSTEM = (
     "You are a federalism and regional policy analyst for India. "
     "Analyse the given policy for state-level variance, Centre-state fiscal tensions, "
     "impact on northeastern states, linguistic minorities, and whether the policy ignores "
-    "regional economic diversity. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
-    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
+    "regional economic diversity. Respond ONLY with valid JSON."
 )
 
 COORDINATOR_SYSTEM = (
@@ -81,8 +73,7 @@ COORDINATOR_SYSTEM = (
     "You have received independent risk assessments from 4 specialist agents. "
     "Synthesise their findings into a final intelligence briefing. "
     "Be direct, specific, and highlight where agents disagree. "
-    "Respond ONLY with a valid JSON object, no markdown, no explanation, no preamble. "
-    "Your response must start with { and end with }. No markdown. No code fences. No explanation before or after the JSON."
+    "Respond ONLY with valid JSON."
 )
 
 INDIAN_PERSONAS = [
@@ -138,7 +129,7 @@ INDIAN_PERSONAS = [
     {"id": 50, "name": "Savitri Nayak", "age_bracket": "25-34", "state": "Odisha", "district": "Koraput", "income_bracket": "very_low", "occupation": "tribal rights activist", "caste_category": "ST", "gender": "female", "residence": "rural", "employment_type": "NGO", "family_size": "single"},
 ]
 
-DEMO_PERSONAS = INDIAN_PERSONAS[:30]
+DEMO_PERSONAS = INDIAN_PERSONAS[:15]
 FULL_PERSONAS = INDIAN_PERSONAS
 
 PERSONA_SYSTEM_PROMPT = """You are validating policy risk assessments from the perspective of a specific Indian citizen. Domain experts identified risks for an Indian government policy. Your job: determine which risks ACTUALLY AFFECT someone matching your demographic profile.
@@ -146,6 +137,14 @@ PERSONA_SYSTEM_PROMPT = """You are validating policy risk assessments from the p
 Be honest and specific. Most policies affect most people at 0 or 1. Only use severity 3 if this risk would genuinely destabilize your life.
 
 Respond ONLY with valid JSON, no markdown, no explanation."""
+
+BATCH_PERSONA_SYSTEM_PROMPT = (
+    "You validate policy risks for multiple Indian citizens at once. "
+    "For each citizen, assess which specialist-identified risks actually apply given their specific profile. "
+    "Be realistic: most risks affect most people at 0 (none) or 1 (minor). "
+    "Use 3 (severe) only if a risk would genuinely destabilise that person's life. "
+    "Respond ONLY with a valid JSON array, no markdown."
+)
 
 
 def parse_response(content: str, agent_name: str) -> dict:
@@ -203,36 +202,61 @@ def _default_coordinator() -> dict:
     }
 
 
-def _headers() -> dict:
-    return {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "HTTP-Referer": "https://nitilens.vercel.app",
-        "Content-Type": "application/json",
-    }
+_assistant_cache: dict[str, str] = {}
 
 
-async def _post_openrouter(payload: dict, timeout: float, retries: int = 2) -> httpx.Response:
-    last_exc = None
+def _bb_headers() -> dict:
+    return {"X-API-Key": BACKBOARD_API_KEY}
+
+
+async def _ensure_assistant(system_prompt: str, name: str) -> str:
+    if system_prompt in _assistant_cache:
+        return _assistant_cache[system_prompt]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.post(
+            f"{BACKBOARD_BASE}/assistants",
+            headers=_bb_headers(),
+            json={"name": name, "system_prompt": system_prompt},
+        )
+        r.raise_for_status()
+        aid = r.json()["assistant_id"]
+    _assistant_cache[system_prompt] = aid
+    return aid
+
+
+async def _post_backboard(
+    system_prompt: str,
+    user_message: str,
+    name: str = "NitiLens Agent",
+    timeout: float = 45.0,
+    retries: int = 2,
+) -> str:
+    last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
+            assistant_id = await _ensure_assistant(system_prompt, name)
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(OPENROUTER_URL, json=payload, headers=_headers())
+                r = await client.post(
+                    f"{BACKBOARD_BASE}/assistants/{assistant_id}/threads",
+                    headers=_bb_headers(),
+                    json={},
+                )
+                r.raise_for_status()
+                thread_id = r.json()["thread_id"]
 
-            if response.status_code in (429, 500, 502, 503, 504) and attempt < retries:
-                await asyncio.sleep(0.8 * (attempt + 1))
-                continue
-
-            return response
+                r = await client.post(
+                    f"{BACKBOARD_BASE}/threads/{thread_id}/messages",
+                    headers=_bb_headers(),
+                    data={"content": user_message, "stream": "false"},
+                )
+                r.raise_for_status()
+                return r.json().get("content", "")
         except Exception as exc:
             last_exc = exc
             if attempt < retries:
                 await asyncio.sleep(0.8 * (attempt + 1))
-                continue
-            raise
-
-    if last_exc:
-        raise last_exc
-    raise RuntimeError("OpenRouter request failed")
+            continue
+    raise last_exc or RuntimeError("Backboard request failed")
 
 
 async def _run_agent(
@@ -256,19 +280,8 @@ async def _run_agent(
         agent_name=agent_name,
         classification=json.dumps(classification),
     )
-    payload = {
-        "model": MODEL,
-        "max_tokens": AGENT_MAX_TOKENS,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_msg},
-        ],
-    }
-
     try:
-        response = await _post_openrouter(payload, timeout=45.0)
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        content = await _post_backboard(system, user_msg, name=f"NitiLens-{agent_name}", timeout=45.0)
         return parse_response(content, agent_name)
     except Exception:
         return _default_agent(agent_name)
@@ -294,19 +307,8 @@ async def coordinator_agent(title: str, all_results: list) -> dict:
     user_msg = COORDINATOR_USER_TEMPLATE.format(
         title=title, reports=json.dumps(all_results, indent=2)
     )
-    payload = {
-        "model": MODEL,
-        "max_tokens": COORDINATOR_MAX_TOKENS,
-        "messages": [
-            {"role": "system", "content": COORDINATOR_SYSTEM},
-            {"role": "user", "content": user_msg},
-        ],
-    }
-
     try:
-        response = await _post_openrouter(payload, timeout=45.0)
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        content = await _post_backboard(COORDINATOR_SYSTEM, user_msg, name="NitiLens-Coordinator", timeout=45.0)
         start = content.find("{")
         end = content.rfind("}")
         if start == -1 or end == -1:
@@ -369,19 +371,7 @@ missed_risk: a risk the specialists missed that specifically affects my demograp
     }
 
     try:
-        response = await _post_openrouter(
-            {
-                "model": MODEL,
-                "max_tokens": PERSONA_MAX_TOKENS,
-                "messages": [
-                    {"role": "system", "content": PERSONA_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-            },
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        content = await _post_backboard(PERSONA_SYSTEM_PROMPT, user_message, name="NitiLens-Persona", timeout=30.0)
         cleaned = re.sub(r"```(?:json)?\s*", "", content or "").strip()
         start = cleaned.find("{")
         end = cleaned.rfind("}")
@@ -400,3 +390,74 @@ missed_risk: a risk the specialists missed that specifically affects my demograp
         }
     except Exception:
         return fallback
+
+
+def _persona_fallback(p: dict) -> dict:
+    return {
+        "persona_id": p["id"],
+        "name": p["name"],
+        "state": p["state"],
+        "occupation": p["occupation"],
+        "caste_category": p["caste_category"],
+        "validations": [],
+        "missed_risk": None,
+    }
+
+
+async def run_persona_batch(personas: list[dict], policy_title: str, specialist_risks: list[str]) -> list[dict]:
+    risks_text = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(specialist_risks))
+    personas_text = "\n".join(
+        f"[{i + 1}, id={p['id']}] {p['name']}: {p['age_bracket']} {p['gender']}, "
+        f"{p['occupation']}, {p['caste_category']}, {p['income_bracket']} income, "
+        f"{p['residence']} {p['state']}, {p['employment_type']}, {p['family_size']}"
+        for i, p in enumerate(personas)
+    )
+    user_msg = (
+        f"Policy: {policy_title}\n\n"
+        f"Risks:\n{risks_text}\n\n"
+        f"Citizens:\n{personas_text}\n\n"
+        f"Return a JSON array with one object per citizen in order:\n"
+        f'[{{"persona_id": <id>, "name": "<name>", "state": "<state>", "occupation": "<occ>", '
+        f'"caste_category": "<caste>", "validations": [{{"risk_index": 1, "applies": true, '
+        f'"severity_for_me": 2, "reason": "one sentence"}}], "missed_risk": null}}]\n'
+        f"severity_for_me: 0=none, 1=minor, 2=significant, 3=severe"
+    )
+
+    fallbacks = [_persona_fallback(p) for p in personas]
+
+    try:
+        content = await _post_backboard(
+            BATCH_PERSONA_SYSTEM_PROMPT, user_msg, name="NitiLens-PersonaBatch", timeout=60.0
+        )
+        cleaned = re.sub(r"```(?:json)?\s*", "", content or "").strip()
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start == -1 or end == -1:
+            return fallbacks
+        parsed = json.loads(cleaned[start : end + 1])
+
+        returned_ids: set[int] = set()
+        results: list[dict] = []
+        for item in parsed:
+            pid = item.get("persona_id")
+            source = next((p for p in personas if p["id"] == pid), None)
+            if not source:
+                continue
+            returned_ids.add(pid)
+            results.append({
+                "persona_id": pid,
+                "name": item.get("name", source["name"]),
+                "state": item.get("state", source["state"]),
+                "occupation": item.get("occupation", source["occupation"]),
+                "caste_category": item.get("caste_category", source["caste_category"]),
+                "validations": item.get("validations", []),
+                "missed_risk": item.get("missed_risk"),
+            })
+
+        for p in personas:
+            if p["id"] not in returned_ids:
+                results.append(_persona_fallback(p))
+
+        return results
+    except Exception:
+        return fallbacks

@@ -18,7 +18,7 @@ from agents import (
     fiscal_agent,
     labor_agent,
     regional_agent,
-    run_persona,
+    run_persona_batch,
 )
 from confidence_scorer import calculate_confidence
 from forward_validator import seal_simulation
@@ -79,29 +79,15 @@ async def analyse_stream(title: str, description: str, mode: str = 'demo'):
             all_risks.extend(agent.get('risks', [])[:2])
         top_risks = all_risks[:8]  # Cap at 8 risks for persona prompts
 
-        # Run personas in batches to avoid rate limits
-        BATCH_SIZE = 2 if mode == "demo" else 3
+        # Run personas in batches of 5 (one LLM call evaluates 5 personas at once)
+        BATCH_SIZE = 5
         for batch_start in range(0, total, BATCH_SIZE):
             batch = personas[batch_start:batch_start + BATCH_SIZE]
-            batch_results = await asyncio.gather(
-                *[run_persona(p, title, top_risks) for p in batch],
-                return_exceptions=True
-            )
+            batch_results = await run_persona_batch(batch, title, top_risks)
             for i, result in enumerate(batch_results):
-                persona = batch[i]
-                if isinstance(result, Exception):
-                    result = {
-                        "persona_id": persona["id"],
-                        "name": persona["name"],
-                        "state": persona["state"],
-                        "occupation": persona["occupation"],
-                        "caste_category": persona["caste_category"],
-                        "validations": [],
-                        "missed_risk": None,
-                    }
                 persona_results.append(result)
                 yield f"data: {json.dumps({'type': 'persona', 'data': result, 'index': batch_start + i, 'total': total})}\n\n"
-            await asyncio.sleep(1.0)  # Brief pause between batches to respect rate limits
+            await asyncio.sleep(0.5)
 
         logger.info(f"Personas complete: {len(persona_results)} responses")
 

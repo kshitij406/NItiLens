@@ -75,11 +75,16 @@ function CompleteContent({ agent }: { agent: AgentResult }) {
         </div>
       </div>
 
-      {/* Summary */}
+      {/* Summary / Verdict Rationale */}
       {agent.summary && (
-        <p style={{ marginTop: 10, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          {agent.summary}
-        </p>
+        <div style={{ marginTop: 10 }}>
+          <p className="mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: sc, textTransform: 'uppercase', marginBottom: 4 }}>
+            Why {agent.severity}
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            {agent.summary}
+          </p>
+        </div>
       )}
 
       <div style={{ borderTop: '1px solid var(--border)', margin: '12px 0' }} />

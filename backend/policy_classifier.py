@@ -1,8 +1,4 @@
-import json
-
-import httpx
-
-from agents import MODEL, OPENROUTER_URL, _headers, parse_response
+from agents import _post_backboard, parse_response
 
 CLASSIFIER_PROMPT = """Classify this Indian government policy for analysis purposes.
 Return ONLY valid JSON, no markdown, no explanation.
@@ -18,22 +14,8 @@ Return ONLY valid JSON, no markdown, no explanation.
 
 async def classify_policy(title: str, description: str) -> dict:
     user_message = f"Policy Title: {title}\n\nPolicy Description: {description}\n\nClassify this policy."
-
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(
-            OPENROUTER_URL,
-            headers=_headers(),
-            json={
-                "model": MODEL,
-                "messages": [
-                    {"role": "system", "content": CLASSIFIER_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                "max_tokens": 200,
-            },
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+    try:
+        content = await _post_backboard(CLASSIFIER_PROMPT, user_message, name="NitiLens-Classifier", timeout=20.0)
         parsed = parse_response(content, "classifier")
         return {
             "domain": parsed.get("domain", "other"),
@@ -41,4 +23,12 @@ async def classify_policy(title: str, description: str) -> dict:
             "geography": parsed.get("geography", "national"),
             "time_horizon": parsed.get("time_horizon", "short_term"),
             "key_attributes": parsed.get("key_attributes", ["income", "employment", "region"]),
+        }
+    except Exception:
+        return {
+            "domain": "other",
+            "primary_affected": "all",
+            "geography": "national",
+            "time_horizon": "short_term",
+            "key_attributes": ["income", "employment", "region"],
         }

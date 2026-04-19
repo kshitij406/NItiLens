@@ -65,6 +65,57 @@ function computeConsensus(personas: PersonaResult[]) {
   return { significant, byRegion, missed }
 }
 
+const SEV_LABEL: Record<number, string> = { 0: 'No impact', 1: 'Minor', 2: 'Significant', 3: 'Severe' }
+const SEV_LABEL_COLOR: Record<number, string> = { 0: 'var(--text-dim)', 1: 'var(--text-dim)', 2: 'var(--medium)', 3: 'var(--high)' }
+
+function PersonaFeedbackSection({ personas }: { personas: PersonaResult[] }) {
+  const impacted = personas.filter(p =>
+    Array.isArray(p.validations) && p.validations.some(v => Number(v.severity_for_me) >= 2)
+  )
+  if (impacted.length === 0) return null
+
+  return (
+    <>
+      <div style={{ borderTop: '1px solid var(--border)', margin: '18px 0 12px' }} />
+      <p className="mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
+        PERSONA FEEDBACK ({impacted.length} significantly impacted)
+      </p>
+      <div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
+        {impacted.map(p => {
+          const topValidations = (p.validations ?? [])
+            .filter(v => v.applies && v.reason && Number(v.severity_for_me) >= 2)
+          return (
+            <div key={p.persona_id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                <p className="mono" style={{ fontSize: 10, color: 'var(--text-primary)' }}>
+                  {p.name} · {p.occupation ?? ''} · {p.state}
+                </p>
+                {p.caste_category && (
+                  <span className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: 20, padding: '1px 7px' }}>
+                    {p.caste_category}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {topValidations.map((v, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span className="mono" style={{ fontSize: 10, color: SEV_LABEL_COLOR[v.severity_for_me], flexShrink: 0, paddingTop: 2 }}>
+                      {SEV_LABEL[v.severity_for_me]}
+                    </span>
+                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: 0 }}>
+                      {v.reason}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 function CoordinatorCard({ coordinator, personas }: { coordinator: CoordinatorResult; personas: PersonaResult[] }) {
   const confColor = SEV_COLOR[coordinator.confidence] ?? SEV_COLOR.Medium
   const consensus = computeConsensus(personas)
@@ -155,6 +206,8 @@ function CoordinatorCard({ coordinator, personas }: { coordinator: CoordinatorRe
           </div>
         </>
       )}
+
+      <PersonaFeedbackSection personas={personas} />
     </div>
   )
 }
@@ -171,25 +224,37 @@ export default function Stage3Findings({ state, onReset }: Props) {
 
   return (
     <div style={{ animation: 'fadeUp 280ms ease both' }}>
-      <div className="severity-banner" style={{ borderLeftColor: sc, marginBottom: 8 }}>
-        <div>
-          <p className="mono" style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>
-            Overall Risk Assessment
-          </p>
-          <p style={{ fontSize: 28, fontWeight: 700, color: sc, fontFamily: "'DM Sans', sans-serif", lineHeight: 1 }}>
-            {overall_severity}
-          </p>
-        </div>
-        <div style={{ textAlign: 'right', maxWidth: 320 }}>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-            {policy_title}
-          </p>
-          {confidence && (
-            <p className="mono" style={{ fontSize: 12, marginTop: 6, color: confColor }}>
-              System Confidence: {confidence.score}/{confidence.out_of}
+      <div className="severity-banner" style={{ borderLeftColor: sc, marginBottom: 8, flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <p className="mono" style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>
+              Overall Risk Assessment
             </p>
-          )}
+            <p style={{ fontSize: 28, fontWeight: 700, color: sc, fontFamily: "'DM Sans', sans-serif", lineHeight: 1 }}>
+              {overall_severity}
+            </p>
+          </div>
+          <div style={{ textAlign: 'right', maxWidth: 320 }}>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+              {policy_title}
+            </p>
+            {confidence && (
+              <p className="mono" style={{ fontSize: 12, marginTop: 6, color: confColor }}>
+                System Confidence: {confidence.score}/{confidence.out_of}
+              </p>
+            )}
+          </div>
         </div>
+        {coordinator?.verdict && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <p className="mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>
+              Why {overall_severity}
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              {coordinator.verdict}
+            </p>
+          </div>
+        )}
       </div>
 
       <p className="mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 18 }}>
